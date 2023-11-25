@@ -4,6 +4,7 @@ compatibility_date = "2023-11-21"
 
 [vars]
 ACCESS_KEY_ID = "d9ec0671312fc3e7437dc59bd7124b1e"
+ALLOWED_BUCKETS = "download"
 
 [[r2_buckets]]
 binding = "DOWNLOAD"
