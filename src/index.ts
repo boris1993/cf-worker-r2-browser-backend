@@ -1,32 +1,56 @@
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
-
 export interface Env {
-	// Example binding to KV. Learn more at https://developers.cloudflare.com/workers/runtime-apis/kv/
-	// MY_KV_NAMESPACE: KVNamespace;
-	//
-	// Example binding to Durable Object. Learn more at https://developers.cloudflare.com/workers/runtime-apis/durable-objects/
-	// MY_DURABLE_OBJECT: DurableObjectNamespace;
-	//
-	// Example binding to R2. Learn more at https://developers.cloudflare.com/workers/runtime-apis/r2/
-	// MY_BUCKET: R2Bucket;
-	//
-	// Example binding to a Service. Learn more at https://developers.cloudflare.com/workers/runtime-apis/service-bindings/
-	// MY_SERVICE: Fetcher;
-	//
-	// Example binding to a Queue. Learn more at https://developers.cloudflare.com/queues/javascript-apis/
-	// MY_QUEUE: Queue;
+	ACCESS_KEY_ID: string,
+	SECRET_ACCESS_KEY: string,
+	ALLOWED_BUCKETS: string,
+	DOWNLOAD: R2Bucket
 }
 
 export default {
-	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-		return new Response('Hello World!');
-	},
+	async fetch(
+		request: Request,
+		env: Env,
+		ctx: ExecutionContext
+	): Promise<Response> {
+		switch (request.method) {
+			case 'GET':
+				const allowedBuckets = env.ALLOWED_BUCKETS.split(',').map(bucketName => bucketName.trim());
+				const url = new URL(request.url);
+				const pathParts = url.pathname.slice(1).split('/')
+				const bucketName = pathParts[0];
+				if (!isBucketAccessAllowed(allowedBuckets, bucketName)) {
+					return new Response(
+						'Bucket doesn\'t exists',
+						{
+							status: 404
+						}
+					);
+				}
+
+				const objectName = pathParts[1];
+
+				const r2ListOptions: R2ListOptions = {
+					prefix: url.searchParams.get('prefix') ?? undefined,
+					delimiter: url.searchParams.get('delimiter') ?? undefined,
+					cursor: url.searchParams.get('cursor') ?? undefined,
+				}
+
+				const listing = await env.DOWNLOAD.list(r2ListOptions);
+				return new Response(
+					JSON.stringify(listing), 
+					{
+						headers: {
+							'content-type': 'application/json; charset=UTF-8',
+						}
+					}
+				);
+			default:
+				return new Response('Method not allowed', {
+					status: 405
+				});
+		}
+	}
 };
+
+function isBucketAccessAllowed(allowedBuckets: string[], bucketAccessing: string): boolean {
+	return allowedBuckets.includes(bucketAccessing) || allowedBuckets.includes(`${bucketAccessing}-preview`);
+}
